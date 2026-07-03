@@ -23,14 +23,14 @@ Low-power wireless water tank monitor using two Seeed Studio XIAO ESP32-C6 board
 
 ### Receiver
 
-| ESP32-C6 | OLED          |
-| -------- | ------------- |
-| GPIO8    | SCL           |
-| GPIO9    | SDA           |
-| GPIO10   | Button to GND |
-| GPIO11   | Status LED    |
-| 3V3      | VCC           |
-| GND      | GND           |
+| ESP32-C6     | OLED          |
+| ------------ | ------------- |
+| D8           | SCL           |
+| D9           | SDA           |
+| D10          | Button to GND |
+| Built-in LED | Status LED    |
+| 3V3          | VCC           |
+| GND          | GND           |
 
 ## Configure
 
@@ -59,7 +59,7 @@ pio run -e sender -t upload
 pio device monitor -e sender
 ```
 
-The sender broadcasts one ESP-NOW packet, waits briefly, then sleeps for 5 minutes. The receiver stays awake for packets, turns the OLED off after 30 seconds, and wakes the OLED on `GPIO10` button press or on new data.
+The sender broadcasts one ESP-NOW packet, waits briefly, then sleeps for 5 minutes. The receiver stays awake for packets, turns the OLED off after 30 seconds, and wakes the OLED on `D10` button press or on new data.
 
 ## Notes
 

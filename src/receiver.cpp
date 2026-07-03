@@ -9,10 +9,10 @@
 
 constexpr int kScreenWidth = 128;
 constexpr int kScreenHeight = 64;
-constexpr int kSdaPin = 9;
-constexpr int kSclPin = 8;
-constexpr int kButtonPin = 10;
-constexpr int kStatusLedPin = 11;
+constexpr int kSdaPin = D9;
+constexpr int kSclPin = D8;
+constexpr int kButtonPin = D10;
+constexpr int kStatusLedPin = LED_BUILTIN;
 
 Adafruit_SSD1306 display(kScreenWidth, kScreenHeight, &Wire, -1);
 WaterTankPacket latest = {};
@@ -78,7 +78,7 @@ void setup() {
   digitalWrite(kStatusLedPin, LOW);
 
   Wire.begin(kSdaPin, kSclPin);
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C) && !display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
     Serial.println("OLED init failed");
   }
   wake_display();
