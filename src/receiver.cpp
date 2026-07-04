@@ -50,6 +50,15 @@ void draw() {
   }
 
   display.setCursor(0, 16);
+  if (isnan(latest.level_m)) {
+    display.println("Ping received");
+    display.printf("Seq: %lu\n", latest.sequence);
+    display.printf("Age: %lus\n", (millis() - last_received_ms) / 1000);
+    display.printf("Batt: %.2f V\n", latest.battery_v);
+    display.display();
+    return;
+  }
+
   display.printf("Level: %.2f m\n", latest.level_m);
   display.printf("Volume: %.0f L\n", latest.volume_l);
   display.printf("Dist: %.2f m\n", latest.distance_m);

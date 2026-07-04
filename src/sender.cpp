@@ -7,8 +7,8 @@
 #include "water_tank_packet.h"
 
 constexpr uint8_t kBroadcastAddress[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-constexpr gpio_num_t kTriggerPin = GPIO_NUM_7;
-constexpr gpio_num_t kEchoPin = GPIO_NUM_6;
+constexpr int kTriggerPin = D7;
+constexpr int kEchoPin = D6;
 constexpr uint64_t kSleepUs = 5ULL * 60ULL * 1000000ULL;
 
 float read_distance_m() {
