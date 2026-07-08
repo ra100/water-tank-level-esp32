@@ -109,7 +109,10 @@ void loop() {
   static uint32_t last_draw_ms = 0;
   static int previous_button = HIGH;
   const int button = digitalRead(kButtonPin);
-  if (previous_button == HIGH && button == LOW) wake_display();
+  if (previous_button == HIGH && button == LOW) {
+    wake_display();
+    draw();
+  }
   previous_button = button;
 
   if (display_on && millis() - display_wake_ms > OLED_TIMEOUT_MS) set_display(false);
