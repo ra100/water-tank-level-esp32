@@ -32,6 +32,18 @@ void wake_display() {
   set_display(true);
 }
 
+void format_age(uint32_t age_s, char *out, size_t size) {
+  if (age_s < 60) {
+    snprintf(out, size, "%lus", age_s);
+  } else if (age_s < 3600) {
+    snprintf(out, size, "%lum", age_s / 60);
+  } else if (age_s < 86400) {
+    snprintf(out, size, "%luh", age_s / 3600);
+  } else {
+    snprintf(out, size, "%.1fd", age_s / 86400.0f);
+  }
+}
+
 void draw() {
   if (!display_on) return;
 
@@ -57,10 +69,15 @@ void draw() {
 
   display.setTextSize(1);
   display.setCursor(0, 0);
-  display.printf("m3 L%.2f D%.2f B%.2f", latest.level_m, latest.distance_m, latest.battery_v);
+  char age[8];
+  format_age((millis() - last_received_ms) / 1000, age, sizeof(age));
+  display.printf("m3 D%.2f B%.2f", latest.distance_m, latest.battery_v);
   display.setTextSize(5);
-  display.setCursor(0, 18);
+  display.setCursor(0, 14);
   display.printf("%.2f", latest.volume_l / 1000.0f);
+  display.setTextSize(1);
+  display.setCursor(0, 56);
+  display.printf("updated %s ago", age);
   display.display();
 }
 
