@@ -7,8 +7,8 @@
 #include "water_tank_packet.h"
 
 constexpr uint8_t kBroadcastAddress[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-constexpr int kTriggerPin = D7;
-constexpr int kEchoPin = D8;
+constexpr int kTriggerPin = D8;
+constexpr int kEchoPin = D7;
 constexpr uint64_t kSleepUs = 5ULL * 60ULL * 1000000ULL;
 
 float read_distance_m() {
@@ -31,13 +31,38 @@ float read_battery_v() {
 
 void sleep_now() {
   Serial.flush();
+#ifdef SENDER_STAY_AWAKE
+  return;
+#endif
   esp_sleep_enable_timer_wakeup(kSleepUs);
   esp_deep_sleep_start();
+}
+
+void measure_and_send() {
+  Serial.println("measuring");
+
+  const float distance_m = read_distance_m();
+  float level_m = TANK_HEIGHT_M - distance_m + SENSOR_OFFSET_M;
+  if (isnan(distance_m)) level_m = NAN;
+  if (!isnan(level_m)) level_m = constrain(level_m, 0.0f, TANK_HEIGHT_M);
+  const float volume_l = isnan(level_m) ? NAN : level_m * TANK_LENGTH_M * TANK_WIDTH_M * 1000.0f;
+
+  WaterTankPacket packet = {
+    .sequence = static_cast<uint32_t>(esp_random()),
+    .distance_m = distance_m,
+    .level_m = level_m,
+    .volume_l = volume_l,
+    .battery_v = read_battery_v(),
+  };
+
+  const esp_err_t result = esp_now_send(kBroadcastAddress, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
+  Serial.printf("sent=%s distance=%.3fm level=%.3fm volume=%.1fL battery=%.2fV\n", result == ESP_OK ? "ok" : "fail", packet.distance_m, packet.level_m, packet.volume_l, packet.battery_v);
 }
 
 void setup() {
   Serial.begin(115200);
   delay(300);
+  Serial.println("sender boot");
 
   pinMode(kTriggerPin, OUTPUT);
   pinMode(kEchoPin, INPUT);
@@ -59,24 +84,14 @@ void setup() {
     sleep_now();
   }
 
-  const float distance_m = read_distance_m();
-  float level_m = TANK_HEIGHT_M - distance_m + SENSOR_OFFSET_M;
-  if (isnan(distance_m)) level_m = NAN;
-  if (!isnan(level_m)) level_m = constrain(level_m, 0.0f, TANK_HEIGHT_M);
-  const float volume_l = isnan(level_m) ? NAN : level_m * TANK_LENGTH_M * TANK_WIDTH_M * 1000.0f;
-
-  WaterTankPacket packet = {
-    .sequence = static_cast<uint32_t>(esp_random()),
-    .distance_m = distance_m,
-    .level_m = level_m,
-    .volume_l = volume_l,
-    .battery_v = read_battery_v(),
-  };
-
-  const esp_err_t result = esp_now_send(kBroadcastAddress, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
-  Serial.printf("sent=%s distance=%.3fm level=%.3fm volume=%.1fL battery=%.2fV\n", result == ESP_OK ? "ok" : "fail", packet.distance_m, packet.level_m, packet.volume_l, packet.battery_v);
+  measure_and_send();
   delay(100);
   sleep_now();
 }
 
-void loop() {}
+void loop() {
+#ifdef SENDER_STAY_AWAKE
+  measure_and_send();
+  delay(5000);
+#endif
+}

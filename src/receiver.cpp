@@ -38,10 +38,6 @@ void draw() {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.println("Water Tank");
-  display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
-
   if (!has_data) {
     display.setCursor(0, 24);
     display.println("Waiting for sender");
@@ -59,11 +55,12 @@ void draw() {
     return;
   }
 
-  display.printf("Level: %.2f m\n", latest.level_m);
-  display.printf("Volume: %.0f L\n", latest.volume_l);
-  display.printf("Dist: %.2f m\n", latest.distance_m);
-  display.printf("Batt: %.2f V\n", latest.battery_v);
-  display.printf("Age: %lus\n", (millis() - last_received_ms) / 1000);
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.printf("m3 L%.2f D%.2f B%.2f", latest.level_m, latest.distance_m, latest.battery_v);
+  display.setTextSize(5);
+  display.setCursor(0, 18);
+  display.printf("%.2f", latest.volume_l / 1000.0f);
   display.display();
 }
 
