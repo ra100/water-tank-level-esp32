@@ -8,7 +8,7 @@
 
 constexpr uint8_t kBroadcastAddress[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 constexpr int kTriggerPin = D7;
-constexpr int kEchoPin = D6;
+constexpr int kEchoPin = D8;
 constexpr uint64_t kSleepUs = 5ULL * 60ULL * 1000000ULL;
 
 float read_distance_m() {

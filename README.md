@@ -16,7 +16,7 @@ Low-power wireless water tank monitor using two Seeed Studio XIAO ESP32-C6 board
 | ESP32-C6 | JSN-SR04T              |
 | -------- | ---------------------- |
 | D7       | Trig                   |
-| D6       | Echo                   |
+| D8       | Echo                   |
 | A0       | Battery divider output |
 | 3V3      | VCC                    |
 | GND      | GND                    |
