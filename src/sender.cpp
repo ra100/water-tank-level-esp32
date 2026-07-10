@@ -9,7 +9,9 @@
 constexpr uint8_t kBroadcastAddress[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 constexpr int kTriggerPin = D8;
 constexpr int kEchoPin = D7;
-constexpr uint64_t kSleepUs = 5ULL * 60ULL * 1000000ULL;
+constexpr int kPowerPin = POWER_PIN;
+constexpr uint64_t kSleepUs = static_cast<uint64_t>(SLEEP_INTERVAL_S) * 1000000ULL;
+constexpr uint16_t kSensorWarmupMs = SENSOR_WARMUP_MS;
 
 float read_distance_m() {
   digitalWrite(kTriggerPin, LOW);
@@ -34,6 +36,7 @@ void sleep_now() {
 #ifdef SENDER_STAY_AWAKE
   return;
 #endif
+  digitalWrite(kPowerPin, HIGH);
   esp_sleep_enable_timer_wakeup(kSleepUs);
   esp_deep_sleep_start();
 }
@@ -41,7 +44,13 @@ void sleep_now() {
 void measure_and_send() {
   Serial.println("measuring");
 
+  digitalWrite(kPowerPin, LOW);
+  delay(kSensorWarmupMs);
+
   const float distance_m = read_distance_m();
+
+  digitalWrite(kPowerPin, HIGH);
+
   float level_m = TANK_HEIGHT_M - distance_m + SENSOR_OFFSET_M;
   if (isnan(distance_m)) level_m = NAN;
   if (!isnan(level_m)) level_m = constrain(level_m, 0.0f, TANK_HEIGHT_M);
@@ -66,6 +75,8 @@ void setup() {
 
   pinMode(kTriggerPin, OUTPUT);
   pinMode(kEchoPin, INPUT);
+  pinMode(kPowerPin, OUTPUT);
+  digitalWrite(kPowerPin, HIGH);
 
   WiFi.mode(WIFI_STA);
   esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);

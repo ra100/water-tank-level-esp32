@@ -13,13 +13,40 @@ Low-power wireless water tank monitor using two Seeed Studio XIAO ESP32-C6 board
 
 ### Sender
 
-| ESP32-C6 | JSN-SR04T              |
-| -------- | ---------------------- |
-| D7       | Trig                   |
-| D8       | Echo                   |
-| A0       | Battery divider output |
-| 3V3      | VCC                    |
-| GND      | GND                    |
+| ESP32-C6 | JSN-SR04T              | IRLML6402 (SOT-23) | Resistor           |
+| -------- | ---------------------- | ------------------ | ------------------ |
+| D7       | Echo                   |                    |                    |
+| D8       | Trig                   |                    |                    |
+| D2       |                        | Pin 1 (Gate)       | via 1k to Gate     |
+| 3V3      |                        | Pin 2 (Source)     | 10k pullup to Gate |
+|          | VCC                    | Pin 3 (Drain)      |                    |
+| A0       | Battery divider output |                    |                    |
+| GND      | GND                    |                    |                    |
+
+The MOSFET power-gates the JSN-SR04T so it draws zero current during deep sleep.
+
+```
+                 IRLML6402 (SOT-23)
+               ┌────────────────────┐
+          Gate │1                  2│ Source
+      ┌────────┤                    ├──────────┐
+      │        │       P-ch MOSFET  │         │
+      │        │                    │         │
+      │        └────────┬───────────┘          │
+      │             Pin3│Drain                │
+      │                 │                     │
+      │           ┌─────┘                     │
+      │           │                           │
+   [1kΩ]        JSN-SR04T VCC                 |
+      │                                     [10kΩ]
+      |                                       │
+      │                                       |
+      │                                      3V3
+      │
+      D2
+```
+
+D2 LOW = sensor ON, D2 HIGH = sensor OFF. The 10k pullup keeps the sensor off during boot and deep sleep.
 
 ### Receiver
 
@@ -44,6 +71,9 @@ Tank dimensions are in `platformio.ini`:
 -D BATTERY_ADC_PIN=A0
 -D BATTERY_DIVIDER_RATIO=2.0
 -D BATTERY_CALIBRATION=1.0
+-D POWER_PIN=D2
+-D SLEEP_INTERVAL_S=3600
+-D SENSOR_WARMUP_MS=200
 -D OLED_TIMEOUT_MS=30000
 ```
 
@@ -59,7 +89,7 @@ pio run -e sender -t upload
 pio device monitor -e sender
 ```
 
-The sender broadcasts one ESP-NOW packet, waits briefly, then sleeps for 5 minutes. The receiver stays awake for packets, turns the OLED off after 30 seconds, and wakes the OLED on `D10` button press or on new data.
+The sender broadcasts one ESP-NOW packet, waits briefly, then sleeps for `SLEEP_INTERVAL_S` seconds (default: 1 hour). The sensor is power-gated via a P-channel MOSFET on `POWER_PIN` — it is only energized for the ~200 ms measurement window. The receiver stays awake for packets, turns the OLED off after 30 seconds, and wakes the OLED on `D10` button press or on new data.
 
 ## Notes
 
