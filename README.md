@@ -48,6 +48,8 @@ The MOSFET power-gates the JSN-SR04T so it draws zero current during deep sleep.
 
 D2 LOW = sensor ON, D2 HIGH = sensor OFF. The 10k pullup keeps the sensor off during boot and deep sleep.
 
+The direct D2-to-Gate circuit above is safe only with a 3.3V MOSFET source. If your sensor works at 3.3V, keep this wiring. To switch a 5V-only sensor, use a transistor/MOSFET gate driver; do not connect a 5V gate pullup directly to D2. Add a voltage divider or level shifter between a 5V Echo output and D7.
+
 ### Receiver
 
 | ESP32-C6     | OLED          |
@@ -72,8 +74,8 @@ Tank dimensions are in `platformio.ini`:
 -D BATTERY_DIVIDER_RATIO=2.0
 -D BATTERY_CALIBRATION=1.0
 -D POWER_PIN=D2
--D SLEEP_INTERVAL_S=3600
--D SENSOR_WARMUP_MS=200
+-D SLEEP_INTERVAL_S=300
+-D SENSOR_WARMUP_MS=1000
 -D OLED_TIMEOUT_MS=30000
 ```
 
