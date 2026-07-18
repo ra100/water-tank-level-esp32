@@ -3,6 +3,7 @@
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_system.h>
 #include <esp_wifi.h>
 
 #include "water_tank_packet.h"
@@ -13,10 +14,14 @@ constexpr int kSdaPin = D9;
 constexpr int kSclPin = D8;
 constexpr int kButtonPin = D10;
 constexpr int kStatusLedPin = LED_BUILTIN;
+constexpr uint32_t kSavedPacketMagic = 0x57415452;
 
 Adafruit_SSD1306 display(kScreenWidth, kScreenHeight, &Wire, -1);
 WaterTankPacket latest = {};
+RTC_DATA_ATTR WaterTankPacket saved_latest = {};
+RTC_DATA_ATTR uint32_t saved_packet_magic = 0;
 bool has_data = false;
+bool restored_data = false;
 bool display_on = true;
 uint32_t last_received_ms = 0;
 uint32_t display_wake_ms = 0;
@@ -77,7 +82,11 @@ void draw() {
   display.printf("%.2f", latest.volume_l / 1000.0f);
   display.setTextSize(1);
   display.setCursor(0, 56);
-  display.printf("updated %s ago", age);
+  if (restored_data) {
+    display.print("last value restored");
+  } else {
+    display.printf("updated %s ago", age);
+  }
   display.display();
 }
 
@@ -85,7 +94,10 @@ void on_receive(const esp_now_recv_info_t *, const uint8_t *data, int len) {
   if (len != sizeof(WaterTankPacket)) return;
   memcpy(&latest, data, sizeof(latest));
   has_data = true;
+  restored_data = false;
   last_received_ms = millis();
+  saved_latest = latest;
+  saved_packet_magic = kSavedPacketMagic;
   digitalWrite(kStatusLedPin, HIGH);
   wake_display();
   Serial.printf("rx seq=%lu level=%.3fm volume=%.1fL battery=%.2fV\n", latest.sequence, latest.level_m, latest.volume_l, latest.battery_v);
@@ -95,6 +107,15 @@ void on_receive(const esp_now_recv_info_t *, const uint8_t *data, int len) {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  Serial.printf("receiver boot, reset_reason=%d\n", esp_reset_reason());
+
+  if (saved_packet_magic == kSavedPacketMagic) {
+    latest = saved_latest;
+    has_data = true;
+    restored_data = true;
+    last_received_ms = millis();
+    Serial.printf("restored seq=%lu from RTC memory\n", latest.sequence);
+  }
 
   pinMode(kButtonPin, INPUT_PULLUP);
   pinMode(kStatusLedPin, OUTPUT);
