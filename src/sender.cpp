@@ -64,23 +64,16 @@ void measure_and_send() {
   digitalWrite(kPowerPin, HIGH);
   Serial.println("sensor power=off");
 
-  float level_m = TANK_HEIGHT_M - distance_m + SENSOR_OFFSET_M;
-  if (isnan(distance_m)) level_m = NAN;
-  if (!isnan(level_m)) level_m = constrain(level_m, 0.0f, TANK_HEIGHT_M);
-  const float volume_l = isnan(level_m) ? NAN : level_m * TANK_LENGTH_M * TANK_WIDTH_M * 1000.0f;
-
   WaterTankPacket packet = {
     .sequence = static_cast<uint32_t>(esp_random()),
     .distance_m = distance_m,
-    .level_m = level_m,
-    .volume_l = volume_l,
     .battery_v = read_battery_v(),
   };
 
   const esp_err_t result = esp_now_send(kBroadcastAddress, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
-  Serial.printf("ESP-NOW queue=%s (%s), packet=%uB seq=%lu distance=%.3fm level=%.3fm volume=%.1fL battery=%.2fV\n",
-                result == ESP_OK ? "ok" : "failed", esp_err_to_name(result), sizeof(packet), packet.sequence,
-                packet.distance_m, packet.level_m, packet.volume_l, packet.battery_v);
+  Serial.printf("ESP-NOW queue=%s (%s), packet=%uB seq=%lu distance=%.3fm battery=%.2fV\n",
+                 result == ESP_OK ? "ok" : "failed", esp_err_to_name(result), sizeof(packet), packet.sequence,
+                 packet.distance_m, packet.battery_v);
 }
 
 void setup() {

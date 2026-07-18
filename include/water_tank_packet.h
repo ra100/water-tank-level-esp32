@@ -5,8 +5,6 @@
 struct WaterTankPacket {
   uint32_t sequence;
   float distance_m;
-  float level_m;
-  float volume_l;
   float battery_v;
 };
 

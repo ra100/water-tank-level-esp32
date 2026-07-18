@@ -14,7 +14,7 @@ constexpr int kSdaPin = D9;
 constexpr int kSclPin = D8;
 constexpr int kButtonPin = D10;
 constexpr int kStatusLedPin = LED_BUILTIN;
-constexpr uint32_t kSavedPacketMagic = 0x57415452;
+constexpr uint32_t kSavedPacketMagic = 0x57415453;
 
 Adafruit_SSD1306 display(kScreenWidth, kScreenHeight, &Wire, -1);
 WaterTankPacket latest = {};
@@ -25,6 +25,15 @@ bool restored_data = false;
 bool display_on = true;
 uint32_t last_received_ms = 0;
 uint32_t display_wake_ms = 0;
+
+float level_from_distance(float distance_m) {
+  if (!isfinite(distance_m)) return NAN;
+  return constrain(TANK_HEIGHT_M - distance_m + SENSOR_OFFSET_M, 0.0f, TANK_HEIGHT_M);
+}
+
+float volume_from_level(float level_m) {
+  return isfinite(level_m) ? level_m * TANK_LENGTH_M * TANK_WIDTH_M * 1000.0f : NAN;
+}
 
 void set_display(bool on) {
   if (display_on == on) return;
@@ -63,7 +72,9 @@ void draw() {
   }
 
   display.setCursor(0, 16);
-  if (isnan(latest.level_m)) {
+  const float level_m = level_from_distance(latest.distance_m);
+  const float volume_l = volume_from_level(level_m);
+  if (!isfinite(level_m)) {
     display.println("Ping received");
     display.printf("Seq: %lu\n", latest.sequence);
     display.printf("Age: %lus\n", (millis() - last_received_ms) / 1000);
@@ -79,7 +90,7 @@ void draw() {
   display.printf("m3 D%.2f B%.2f", latest.distance_m, latest.battery_v);
   display.setTextSize(5);
   display.setCursor(0, 14);
-  display.printf("%.2f", latest.volume_l / 1000.0f);
+  display.printf("%.2f", volume_l / 1000.0f);
   display.setTextSize(1);
   display.setCursor(0, 56);
   if (restored_data) {
@@ -105,7 +116,9 @@ void on_receive(const esp_now_recv_info_t *, const uint8_t *data, int len) {
   saved_packet_magic = kSavedPacketMagic;
   digitalWrite(kStatusLedPin, HIGH);
   wake_display();
-  Serial.printf("rx seq=%lu level=%.3fm volume=%.1fL battery=%.2fV\n", latest.sequence, latest.level_m, latest.volume_l, latest.battery_v);
+  const float level_m = level_from_distance(latest.distance_m);
+  const float volume_l = volume_from_level(level_m);
+  Serial.printf("rx seq=%lu distance=%.3fm level=%.3fm volume=%.1fL battery=%.2fV\n", latest.sequence, latest.distance_m, level_m, volume_l, latest.battery_v);
   draw();
 }
 
