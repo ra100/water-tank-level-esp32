@@ -90,9 +90,14 @@ void draw() {
   display.display();
 }
 
-void on_receive(const esp_now_recv_info_t *, const uint8_t *data, int len) {
-  if (len != sizeof(WaterTankPacket)) return;
+bool accept_packet(const uint8_t *data, int len) {
+  if (len != sizeof(WaterTankPacket)) return false;
   memcpy(&latest, data, sizeof(latest));
+  return true;
+}
+
+void on_receive(const esp_now_recv_info_t *, const uint8_t *data, int len) {
+  if (!accept_packet(data, len)) return;
   has_data = true;
   restored_data = false;
   last_received_ms = millis();
