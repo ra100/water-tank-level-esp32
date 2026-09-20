@@ -1,18 +1,67 @@
 #include <Arduino.h>
-#include <WiFi.h>
-#include <esp_now.h>
-#include <esp_sleep.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <esp_system.h>
-#include <esp_wifi.h>
 
-#include "water_tank_packet.h"
-
-constexpr uint8_t kBroadcastAddress[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+constexpr int kScreenWidth = 128;
+constexpr int kScreenHeight = 64;
 constexpr int kTriggerPin = D8;
 constexpr int kEchoPin = D7;
 constexpr int kPowerPin = POWER_PIN;
-constexpr uint64_t kSleepUs = static_cast<uint64_t>(SLEEP_INTERVAL_S) * 1000000ULL;
+constexpr int kSdaPin = D10;
+constexpr int kSclPin = D9;
+constexpr int kButtonPin = D5;
+constexpr int kStatusLedPin = LED_BUILTIN;
+constexpr uint32_t kSavedReadingMagic = 0x57415453;
 constexpr uint16_t kSensorWarmupMs = SENSOR_WARMUP_MS;
+constexpr uint32_t kMeasureIntervalMs = static_cast<uint32_t>(MEASURE_INTERVAL_S) * 1000UL;
+
+struct Reading {
+  float distance_m;
+  float battery_v;
+};
+
+Adafruit_SSD1306 display(kScreenWidth, kScreenHeight, &Wire, -1);
+Reading latest = {};
+RTC_DATA_ATTR Reading saved_latest = {};
+RTC_DATA_ATTR uint32_t saved_reading_magic = 0;
+bool has_data = false;
+bool restored_data = false;
+bool display_on = true;
+uint32_t last_measured_ms = 0;
+uint32_t display_wake_ms = 0;
+
+float level_from_distance(float distance_m) {
+  if (!isfinite(distance_m)) return NAN;
+  return constrain(TANK_HEIGHT_M - distance_m + SENSOR_OFFSET_M, 0.0f, TANK_HEIGHT_M);
+}
+
+float volume_from_level(float level_m) {
+  return isfinite(level_m) ? level_m * TANK_LENGTH_M * TANK_WIDTH_M * 1000.0f : NAN;
+}
+
+void set_display(bool on) {
+  if (display_on == on) return;
+  display_on = on;
+  display.ssd1306_command(on ? SSD1306_DISPLAYON : SSD1306_DISPLAYOFF);
+}
+
+void wake_display() {
+  display_wake_ms = millis();
+  set_display(true);
+}
+
+void format_age(uint32_t age_s, char *out, size_t size) {
+  if (age_s < 60) {
+    snprintf(out, size, "%lus", age_s);
+  } else if (age_s < 3600) {
+    snprintf(out, size, "%lum", age_s / 60);
+  } else if (age_s < 86400) {
+    snprintf(out, size, "%luh", age_s / 3600);
+  } else {
+    snprintf(out, size, "%.1fd", age_s / 86400.0f);
+  }
+}
 
 float read_distance_m() {
   digitalWrite(kTriggerPin, LOW);
@@ -34,24 +83,50 @@ float read_battery_v() {
   return (millivolts / 1000.0f) * BATTERY_DIVIDER_RATIO * BATTERY_CALIBRATION;
 }
 
-void on_send(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.printf("ESP-NOW delivery=%s to %02X:%02X:%02X:%02X:%02X:%02X\n",
-                status == ESP_NOW_SEND_SUCCESS ? "ok" : "failed",
-                mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+void draw() {
+  if (!display_on) return;
+
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  if (!has_data) {
+    display.setCursor(0, 24);
+    display.println("Measuring...");
+    display.display();
+    return;
+  }
+
+  const float level_m = level_from_distance(latest.distance_m);
+  const float volume_l = volume_from_level(level_m);
+  char age[8];
+  format_age((millis() - last_measured_ms) / 1000, age, sizeof(age));
+
+  if (!isfinite(level_m)) {
+    display.setCursor(0, 16);
+    display.println("No echo");
+    display.printf("Batt: %.2f V\n", latest.battery_v);
+    display.printf("Age: %s\n", age);
+    display.display();
+    return;
+  }
+
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.printf("m3 D%.2f B%.2f", latest.distance_m, latest.battery_v);
+  display.setTextSize(5);
+  display.setCursor(0, 14);
+  display.printf("%.2f", volume_l / 1000.0f);
+  display.setTextSize(1);
+  display.setCursor(0, 56);
+  if (restored_data) {
+    display.print("last value restored");
+  } else {
+    display.printf("updated %s ago", age);
+  }
+  display.display();
 }
 
-void sleep_now() {
-  Serial.printf("sleeping for %llus\n", kSleepUs / 1000000ULL);
-  Serial.flush();
-#ifdef SENDER_STAY_AWAKE
-  return;
-#endif
-  digitalWrite(kPowerPin, HIGH);
-  esp_sleep_enable_timer_wakeup(kSleepUs);
-  esp_deep_sleep_start();
-}
-
-void measure_and_send() {
+void measure() {
   Serial.printf("measuring trigger=%d echo=%d power=%d warmup=%ums\n",
                 kTriggerPin, kEchoPin, kPowerPin, kSensorWarmupMs);
 
@@ -59,33 +134,52 @@ void measure_and_send() {
   Serial.println("sensor power=on");
   delay(kSensorWarmupMs);
 
-  const float distance_m = read_distance_m();
+  Reading reading = {
+    .distance_m = read_distance_m(),
+    .battery_v = read_battery_v(),
+  };
 
   digitalWrite(kPowerPin, HIGH);
   Serial.println("sensor power=off");
 
-  WaterTankPacket packet = {
-    .sequence = static_cast<uint32_t>(esp_random()),
-    .distance_m = distance_m,
-    .battery_v = read_battery_v(),
-  };
+  latest = reading;
+  has_data = true;
+  restored_data = false;
+  last_measured_ms = millis();
+  saved_latest = reading;
+  saved_reading_magic = kSavedReadingMagic;
+  digitalWrite(kStatusLedPin, HIGH);
+  wake_display();
 
-  const esp_err_t result = esp_now_send(kBroadcastAddress, reinterpret_cast<uint8_t *>(&packet), sizeof(packet));
-  Serial.printf("ESP-NOW queue=%s (%s), packet=%uB seq=%lu distance=%.3fm battery=%.2fV\n",
-                 result == ESP_OK ? "ok" : "failed", esp_err_to_name(result), sizeof(packet), packet.sequence,
-                 packet.distance_m, packet.battery_v);
+  const float level_m = level_from_distance(reading.distance_m);
+  const float volume_l = volume_from_level(level_m);
+  Serial.printf("measured distance=%.3fm level=%.3fm volume=%.1fL battery=%.2fV\n",
+                reading.distance_m, level_m, volume_l, reading.battery_v);
+  draw();
 }
 
 void setup() {
   Serial.begin(115200);
   delay(300);
-  Serial.printf("sender boot, reset_reason=%d\n", esp_reset_reason());
+  Serial.printf("unit boot, reset_reason=%d\n", esp_reset_reason());
+
+  if (saved_reading_magic == kSavedReadingMagic) {
+    latest = saved_latest;
+    has_data = true;
+    restored_data = true;
+    last_measured_ms = millis();
+    Serial.printf("restored distance=%.3fm battery=%.2fV from RTC memory\n",
+                  latest.distance_m, latest.battery_v);
+  }
 
   pinMode(kTriggerPin, OUTPUT);
   pinMode(kEchoPin, INPUT);
   pinMode(kPowerPin, OUTPUT);
   digitalWrite(kPowerPin, HIGH);
   Serial.printf("pins configured; sensor power=off, battery_adc=%d\n", BATTERY_ADC_PIN);
+  pinMode(kButtonPin, INPUT_PULLUP);
+  pinMode(kStatusLedPin, OUTPUT);
+  digitalWrite(kStatusLedPin, LOW);
 
 #ifdef SENDER_POWER_TEST
   digitalWrite(kPowerPin, LOW);
@@ -93,45 +187,38 @@ void setup() {
   return;
 #endif
 
-  WiFi.mode(WIFI_STA);
-  Serial.printf("Wi-Fi station MAC=%s channel=%d\n", WiFi.macAddress().c_str(), WIFI_CHANNEL);
-  const esp_err_t channel_result = esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
-  if (channel_result != ESP_OK) {
-    Serial.printf("Wi-Fi channel setup failed: %s\n", esp_err_to_name(channel_result));
-    sleep_now();
+  Wire.begin(kSdaPin, kSclPin);
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C) && !display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
+    Serial.println("OLED init failed");
   }
+  wake_display();
+  draw();
 
-  const esp_err_t init_result = esp_now_init();
-  if (init_result != ESP_OK) {
-    Serial.printf("ESP-NOW init failed: %s\n", esp_err_to_name(init_result));
-    sleep_now();
-  }
-  esp_now_register_send_cb(on_send);
-  Serial.println("ESP-NOW initialized");
-
-  esp_now_peer_info_t peer = {};
-  memcpy(peer.peer_addr, kBroadcastAddress, 6);
-  peer.channel = WIFI_CHANNEL;
-  peer.encrypt = false;
-  const esp_err_t peer_result = esp_now_add_peer(&peer);
-  if (peer_result != ESP_OK) {
-    Serial.printf("ESP-NOW peer add failed: %s\n", esp_err_to_name(peer_result));
-    sleep_now();
-  }
-  Serial.println("ESP-NOW broadcast peer added");
-
-  measure_and_send();
-  delay(100);
-  sleep_now();
+  measure();
 }
 
 void loop() {
-#ifdef SENDER_STAY_AWAKE
 #ifdef SENDER_POWER_TEST
   delay(1000);
-#else
-  measure_and_send();
-  delay(5000);
+  return;
 #endif
-#endif
+
+  static uint32_t last_draw_ms = 0;
+  static int previous_button = HIGH;
+  const int button = digitalRead(kButtonPin);
+  if (previous_button == HIGH && button == LOW) {
+    wake_display();
+    draw();
+  }
+  previous_button = button;
+
+  if (display_on && millis() - display_wake_ms > OLED_TIMEOUT_MS) set_display(false);
+  if (has_data && millis() - last_measured_ms > 1000) digitalWrite(kStatusLedPin, LOW);
+
+  if (millis() - last_measured_ms >= kMeasureIntervalMs) measure();
+
+  if (millis() - last_draw_ms > 1000) {
+    last_draw_ms = millis();
+    draw();
+  }
 }
