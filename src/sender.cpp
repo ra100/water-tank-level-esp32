@@ -207,8 +207,7 @@ void loop() {
   static int previous_button = HIGH;
   const int button = digitalRead(kButtonPin);
   if (previous_button == HIGH && button == LOW) {
-    wake_display();
-    draw();
+    measure();
   }
   previous_button = button;
 
