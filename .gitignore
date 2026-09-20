@@ -71,3 +71,4 @@ Testing/
 # PlatformIO build
 .pio/
 .vscode/
+.serena/
