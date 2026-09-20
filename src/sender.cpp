@@ -97,7 +97,6 @@ void draw() {
   }
 
   const float level_m = level_from_distance(latest.distance_m);
-  const float volume_l = volume_from_level(level_m);
   char age[8];
   format_age((millis() - last_measured_ms) / 1000, age, sizeof(age));
 
@@ -110,13 +109,17 @@ void draw() {
     return;
   }
 
-  display.setTextSize(1);
+  const int percent = (int)(level_m / TANK_HEIGHT_M * 100.0f + 0.5f);
+
   display.setCursor(0, 0);
-  display.printf("m3 D%.2f B%.2f", latest.distance_m, latest.battery_v);
-  display.setTextSize(5);
-  display.setCursor(0, 14);
-  display.printf("%.2f", volume_l / 1000.0f);
-  display.setTextSize(1);
+  display.printf("D%.2f B%.2f %d%%", latest.distance_m, latest.battery_v, percent);
+
+  const int bar_x = 4, bar_y = 12, bar_w = 120, bar_h = 40;
+  display.drawRect(bar_x, bar_y, bar_w, bar_h, SSD1306_WHITE);
+  display.drawRect(bar_x + 1, bar_y + 1, bar_w - 2, bar_h - 2, SSD1306_WHITE);
+  const int fill_w = (int)((bar_w - 4) * percent / 100.0f);
+  if (fill_w > 0) display.fillRect(bar_x + 2, bar_y + 2, fill_w, bar_h - 4, SSD1306_WHITE);
+
   display.setCursor(0, 56);
   if (restored_data) {
     display.print("last value restored");
